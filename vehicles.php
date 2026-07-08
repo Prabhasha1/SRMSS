@@ -81,8 +81,45 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_vehicle'])) {
     }
 }
 
-// Fetch elements for system matrix view tracking data
-$vehicles = $conn->query("SELECT * FROM vehicles ORDER BY id DESC")->fetchAll(PDO::FETCH_ASSOC);
+// Search and Multi-Filtering Business Logic
+$search = isset($_GET['search']) ? trim($_GET['search']) : '';
+$status_filter = isset($_GET['status_filter']) ? trim($_GET['status_filter']) : '';
+$capacity_filter = isset($_GET['capacity_filter']) ? trim($_GET['capacity_filter']) : '';
+
+$where_clauses = [];
+$params = [];
+
+if (!empty($search)) {
+    $where_clauses[] = "(plate_number LIKE :search OR model LIKE :search)";
+    $params['search'] = '%' . $search . '%';
+}
+
+if (!empty($status_filter)) {
+    $where_clauses[] = "status = :status_filter";
+    $params['status_filter'] = $status_filter;
+}
+
+if (!empty($capacity_filter)) {
+    if ($capacity_filter === '1-20') {
+        $where_clauses[] = "capacity BETWEEN 1 AND 20";
+    } elseif ($capacity_filter === '21-40') {
+        $where_clauses[] = "capacity BETWEEN 21 AND 40";
+    } elseif ($capacity_filter === '41+') {
+        $where_clauses[] = "capacity >= 41";
+    }
+}
+
+$query = "SELECT * FROM vehicles";
+if (count($where_clauses) > 0) {
+    $query .= " WHERE " . implode(' AND ', $where_clauses);
+}
+$query .= " ORDER BY id DESC";
+
+$stmt = $conn->prepare($query);
+$stmt->execute($params);
+$vehicles = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+$is_filtered = !empty($search) || !empty($status_filter) || !empty($capacity_filter);
 ?>
 
 <style>
@@ -101,6 +138,50 @@ $vehicles = $conn->query("SELECT * FROM vehicles ORDER BY id DESC")->fetchAll(PD
             <p class="text-muted">Register system transit entities, run maintenance update validations, and monitor operational lifecycle logs.</p>
             <div class="mt-2"><?php echo $message; ?></div>
             <hr style="border-color: #e2e8f0;">
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm p-3 bg-white" style="border-radius: 12px;">
+                <form method="GET" action="vehicles.php" class="row g-2 align-items-center">
+                    <div class="col-md-4">
+                        <div class="input-group">
+                            <span class="input-group-text bg-light border-end-0 text-muted" style="border-color: #e2e8f0;">
+                                <i class="bi bi-search"></i>
+                            </span>
+                            <input type="text" name="search" class="form-control border-start-0 py-2" style="border-color: #e2e8f0;" 
+                                   placeholder="Search plate number or model..." value="<?php echo htmlspecialchars($search); ?>">
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <select name="status_filter" class="form-select py-2" style="border-color: #e2e8f0;">
+                            <option value="">-- All Operational Statuses --</option>
+                            <option value="Operational" <?php echo ($status_filter === 'Operational') ? 'selected' : ''; ?>>Operational</option>
+                            <option value="Maintenance" <?php echo ($status_filter === 'Maintenance') ? 'selected' : ''; ?>>Maintenance</option>
+                            <option value="Out of Service" <?php echo ($status_filter === 'Out of Service') ? 'selected' : ''; ?>>Out of Service</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <select name="capacity_filter" class="form-select py-2" style="border-color: #e2e8f0;">
+                            <option value="">-- All Seating Capacities --</option>
+                            <option value="1-20" <?php echo ($capacity_filter === '1-20') ? 'selected' : ''; ?>>1 - 20 Seats</option>
+                            <option value="21-40" <?php echo ($capacity_filter === '21-40') ? 'selected' : ''; ?>>21 - 40 Seats</option>
+                            <option value="41+" <?php echo ($capacity_filter === '41+') ? 'selected' : ''; ?>>41+ Seats</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2 d-flex gap-2">
+                        <button type="submit" class="btn text-white w-100 fw-bold py-2" style="background-color: #3182ce;">
+                            <i class="bi bi-filter me-1"></i> Filter
+                        </button>
+                        <?php if ($is_filtered): ?>
+                            <a href="vehicles.php" class="btn btn-outline-danger py-2 px-3 fw-bold text-nowrap" title="Clear Search & Filters">
+                                <i class="bi bi-x-lg"></i> Clear
+                            </a>
+                        <?php endif; ?>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 
@@ -148,7 +229,7 @@ $vehicles = $conn->query("SELECT * FROM vehicles ORDER BY id DESC")->fetchAll(PD
             <div class="card shadow-sm border-0 bg-white hover-card">
                 <div class="card-header bg-dark text-white fw-bold py-3 d-flex justify-content-between align-items-center" style="border-top-left-radius: 12px; border-top-right-radius: 12px;">
                     <span><i class="bi bi-cpu me-2"></i>System Fleet Registry Matrix</span>
-                    <span class="badge bg-secondary"><?php echo count($vehicles); ?> Units Saved</span>
+                    <span class="badge bg-secondary"><?php echo count($vehicles); ?> Units Found</span>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
@@ -166,9 +247,12 @@ $vehicles = $conn->query("SELECT * FROM vehicles ORDER BY id DESC")->fetchAll(PD
                             <tbody>
                                 <?php if (empty($vehicles)): ?>
                                     <tr>
-                                        <td colspan="6" class="text-center text-muted py-5">No fleet transport units currently saved inside dataset systems.</td>
+                                        <td colspan="6" class="text-center text-muted py-5">
+                                            <i class="bi bi-inbox fs-3 d-block mb-2"></i>
+                                            No fleet transport units match your criteria or are currently saved inside dataset systems.
+                                        </td>
                                     </tr>
-                                <?php align_middle_loop: else: ?>
+                                <?php else: ?>
                                     <?php foreach ($vehicles as $v): ?>
                                         <tr style="border-bottom: 1px solid #e2e8f0;">
                                             <td class="ps-4">

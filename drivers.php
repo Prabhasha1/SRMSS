@@ -56,8 +56,31 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_driver'])) {
     }
 }
 
-// Fetch all drivers to populate logs list
-$drivers = $conn->query("SELECT * FROM drivers ORDER BY id DESC")->fetchAll(PDO::FETCH_ASSOC);
+// --- Handle Search & Filter Parameters ---
+$search_query = isset($_GET['search']) ? trim($_GET['search']) : '';
+$status_filter = isset($_GET['status_filter']) ? trim($_GET['status_filter']) : '';
+
+// Build dynamic database query
+$sql = "SELECT * FROM drivers WHERE 1=1";
+$params = [];
+
+if ($search_query !== '') {
+    $sql .= " AND (license_number LIKE :search OR first_name LIKE :search OR last_name LIKE :search)";
+    $params['search'] = '%' . $search_query . '%';
+}
+
+if ($status_filter !== '') {
+    $sql .= " AND status = :status";
+    $params['status'] = $status_filter;
+}
+
+$sql .= " ORDER BY id DESC";
+
+$stmt = $conn->prepare($sql);
+$stmt->execute($params);
+$drivers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+$is_filtered = ($search_query !== '' || $status_filter !== '');
 ?>
 
 <div class="row" style="background-color: #f7fafc; min-height: 80vh; padding: 20px;">
@@ -108,6 +131,37 @@ $drivers = $conn->query("SELECT * FROM drivers ORDER BY id DESC")->fetchAll(PDO:
     </div>
 
     <div class="col-md-8">
+        <div class="card shadow-sm border-0 mb-3" style="background-color: #ffffff;">
+            <div class="card-body p-3">
+                <form method="GET" action="drivers.php" class="row g-2 align-items-center">
+                    <div class="col-md-5">
+                        <div class="input-group">
+                            <span class="input-group-text bg-light border-end-0"><i class="bi bi-search text-muted"></i></span>
+                            <input type="text" name="search" class="form-control border-start-0" placeholder="Search by name or license..." value="<?php echo htmlspecialchars($search_query); ?>" style="border-color: #e2e8f0;">
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <select name="status_filter" class="form-select" style="border-color: #e2e8f0;">
+                            <option value="">All Statuses</option>
+                            <option value="Available" <?php echo $status_filter === 'Available' ? 'selected' : ''; ?>>Available</option>
+                            <option value="On Duty" <?php echo $status_filter === 'On Duty' ? 'selected' : ''; ?>>On Duty</option>
+                            <option value="On Leave" <?php echo $status_filter === 'On Leave' ? 'selected' : ''; ?>>On Leave</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3 d-flex gap-1">
+                        <button type="submit" class="btn btn-primary w-100 fw-semibold" style="background-color: #3182ce; border: none;">
+                            <i class="bi bi-funnel-fill me-1"></i> Filter
+                        </button>
+                        <?php if ($is_filtered): ?>
+                            <a href="drivers.php" class="btn btn-outline-secondary fw-semibold" title="Clear Search & Filter">
+                                <i class="bi bi-x-lg"></i>
+                            </a>
+                        <?php endif; ?>
+                    </div>
+                </form>
+            </div>
+        </div>
+
         <div class="card shadow-sm border-0" style="background-color: #ffffff;">
             <div class="card-header bg-dark text-white fw-bold d-flex justify-content-between align-items-center">
                 <span><i class="bi bi-list-ul me-1"></i> Active Driver Logs & Assignments</span>
@@ -129,7 +183,13 @@ $drivers = $conn->query("SELECT * FROM drivers ORDER BY id DESC")->fetchAll(PDO:
                         <tbody>
                             <?php if (empty($drivers)): ?>
                                 <tr>
-                                    <td colspan="6" class="text-center text-muted py-4">No drivers registered inside the registry.</td>
+                                    <td colspan="6" class="text-center text-muted py-4">
+                                        <?php if ($is_filtered): ?>
+                                            No drivers found matching your search criteria. <a href="drivers.php" class="text-primary text-decoration-none">Clear filter</a>
+                                        <?php else: ?>
+                                            No drivers registered inside the registry.
+                                        <?php endif; ?>
+                                    </td>
                                 </tr>
                             <?php else: ?>
                                 <?php foreach ($drivers as $driver): ?>
@@ -176,7 +236,7 @@ $drivers = $conn->query("SELECT * FROM drivers ORDER BY id DESC")->fetchAll(PDO:
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow">
             <div class="modal-header text-white" style="background-color: #2d3748;">
-                <h5 class="modal-title id="editDriverModalLabel" fw-bold"><i class="bi bi-pencil-square me-1"></i> Update Driver Details</h5>
+                <h5 class="modal-title" id="editDriverModalLabel"><i class="bi bi-pencil-square me-1"></i> Update Driver Details</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <form action="drivers.php" method="POST">
@@ -217,7 +277,8 @@ $drivers = $conn->query("SELECT * FROM drivers ORDER BY id DESC")->fetchAll(PDO:
     </div>
 </div>
 
-</div> <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</div> 
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
 document.addEventListener("DOMContentLoaded", function() {
@@ -225,7 +286,6 @@ document.addEventListener("DOMContentLoaded", function() {
     
     editButtons.forEach(button => {
         button.addEventListener('click', function() {
-            // Read data variables from clicked table row button
             const id = this.getAttribute('data-id');
             const license = this.getAttribute('data-license');
             const first = this.getAttribute('data-first');
@@ -233,7 +293,6 @@ document.addEventListener("DOMContentLoaded", function() {
             const phone = this.getAttribute('data-phone');
             const status = this.getAttribute('data-status');
 
-            // Map data directly into elements inside modal fields
             document.getElementById('modal_driver_id').value = id;
             document.getElementById('modal_license_number').value = license;
             document.getElementById('modal_first_name').value = first;

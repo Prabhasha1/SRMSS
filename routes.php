@@ -64,15 +64,37 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_route'])) {
     }
 }
 
-// 4. Functional Requirement: Search Route
-$search_query = '';
-if (isset($_GET['search']) && !empty(trim($_GET['search']))) {
-    $search_query = trim($_GET['search']);
-    $stmt = $conn->prepare("SELECT * FROM routes WHERE route_number LIKE :search OR start_location LIKE :search OR end_location LIKE :search ORDER BY id DESC");
-    $stmt->execute(['search' => "%$search_query%"]);
+// 4. Enhanced Functional Requirement: Search & Multi-Filter Logic
+$search_query = isset($_GET['search']) ? trim($_GET['search']) : '';
+$distance_filter = isset($_GET['distance_filter']) ? trim($_GET['distance_filter']) : '';
+
+$sql = "SELECT * FROM routes WHERE 1=1";
+$params = [];
+
+if (!empty($search_query)) {
+    $sql .= " AND (route_number LIKE :search OR start_location LIKE :search OR end_location LIKE :search)";
+    $params['search'] = "%$search_query%";
+}
+
+if (!empty($distance_filter)) {
+    if ($distance_filter === 'short') {
+        $sql .= " AND distance_km < 50";
+    } elseif ($distance_filter === 'medium') {
+        $sql .= " AND distance_km BETWEEN 50 AND 150";
+    } elseif ($distance_filter === 'long') {
+        $sql .= " AND distance_km > 150";
+    }
+}
+
+$sql .= " ORDER BY id DESC";
+
+try {
+    $stmt = $conn->prepare($sql);
+    $stmt->execute($params);
     $routes = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} else {
-    $routes = $conn->query("SELECT * FROM routes ORDER BY id DESC")->fetchAll(PDO::FETCH_ASSOC);
+} catch (PDOException $e) {
+    $routes = [];
+    $message = '<div class="alert alert-danger border-0 shadow-sm animate-fade py-3" style="background-color: #fff5f5; color: #e53e3e; border-left: 4px solid #e53e3e;"><i class="bi bi-exclamation-triangle-fill me-2"></i>Query Error: ' . htmlspecialchars($e->getMessage()) . '</div>';
 }
 ?>
 
@@ -129,17 +151,33 @@ body {
 
     <div class="col-md-12 mb-4">
         <div class="card theme-card p-3">
-            <form action="routes.php" method="GET" class="row g-2">
-                <div class="col-md-10">
+            <form action="routes.php" method="GET" class="row g-2 align-items-center">
+                <div class="col-md-6">
                     <div class="input-group">
                         <span class="input-group-text theme-input border-end-0 bg-light"><i class="bi bi-search text-muted"></i></span>
                         <input type="text" name="search" class="form-control theme-input border-start-0" value="<?php echo htmlspecialchars($search_query); ?>" placeholder="Search routes by system code, origin transit hub, or final terminal drop points...">
                     </div>
                 </div>
-                <div class="col-md-2">
-                    <button type="submit" class="btn btn-primary w-100 fw-semibold h-100 rounded-2 shadow-sm">
-                        <i class="bi bi-sliders me-1"></i> Filter Matrix
+
+                <div class="col-md-3">
+                    <select name="distance_filter" class="form-select theme-input">
+                        <option value="">All Distance Ranges</option>
+                        <option value="short" <?php echo $distance_filter === 'short' ? 'selected' : ''; ?>>Short Distance (&lt; 50 KM)</option>
+                        <option value="medium" <?php echo $distance_filter === 'medium' ? 'selected' : ''; ?>>Medium Distance (50 - 150 KM)</option>
+                        <option value="long" <?php echo $distance_filter === 'long' ? 'selected' : ''; ?>>Long Distance (&gt; 150 KM)</option>
+                    </select>
+                </div>
+
+                <div class="col-md-3 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary w-100 fw-semibold py-2 rounded-2 shadow-sm">
+                        <i class="bi bi-funnel-fill me-1"></i> Apply Filters
                     </button>
+
+                    <?php if (!empty($search_query) || !empty($distance_filter)): ?>
+                        <a href="routes.php" class="btn btn-outline-secondary fw-semibold py-2 rounded-2 shadow-sm d-flex align-items-center justify-content-center" title="Clear Search & Filters">
+                            <i class="bi bi-x-circle me-1"></i> Clear
+                        </a>
+                    <?php endif; ?>
                 </div>
             </form>
         </div>
@@ -178,8 +216,11 @@ body {
 
     <div class="col-md-8">
         <div class="card theme-card">
-            <div class="card-header theme-card-header py-3 text-custom-dark">
-                <i class="bi bi-hdd-network text-success me-2"></i> Active Transit Pipelines
+            <div class="card-header theme-card-header py-3 text-custom-dark d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-hdd-network text-success me-2"></i> Active Transit Pipelines</span>
+                <?php if (!empty($search_query) || !empty($distance_filter)): ?>
+                    <span class="badge bg-light text-dark border"><i class="bi bi-info-circle me-1"></i> Filtered Results</span>
+                <?php endif; ?>
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
@@ -204,7 +245,7 @@ body {
                                                 <?php echo htmlspecialchars($route['route_number']); ?>
                                             </span>
                                         </td>
-                                        <td class="fw-semibold text-custom-dark"><?php echo htmlspecialchars($start_loc = $route['start_location']); ?></td>
+                                        <td class="fw-semibold text-custom-dark"><?php echo htmlspecialchars($route['start_location']); ?></td>
                                         <td class="fw-semibold text-custom-dark"><?php echo htmlspecialchars($route['end_location']); ?></td>
                                         <td><span class="text-success fw-bold"><?php echo htmlspecialchars($route['distance_km']); ?></span> <small class="text-muted">KM</small></td>
                                         <td class="text-center">
@@ -268,6 +309,6 @@ body {
     <?php endforeach; ?>
 <?php endif; ?>
 
-</div> <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

@@ -106,16 +106,62 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_schedule'])) {
 // Pre-fetching select drop-down datasets
 $routesList = $conn->query("SELECT id, route_number, start_location, end_location FROM routes")->fetchAll(PDO::FETCH_ASSOC);
 $driversList = $conn->query("SELECT id, first_name, last_name FROM drivers WHERE status = 'Available'")->fetchAll(PDO::FETCH_ASSOC);
+$allDrivers = $conn->query("SELECT id, first_name, last_name FROM drivers")->fetchAll(PDO::FETCH_ASSOC); // Used for multi-filtering dropdown
 $vehiclesList = $conn->query("SELECT id, plate_number, model, status FROM vehicles")->fetchAll(PDO::FETCH_ASSOC);
 
-// Complete live master tracking loop query
+// 4. Business Logic: Dynamic Search & Filtering Setup
+$search_query = isset($_GET['search_query']) ? trim($_GET['search_query']) : '';
+$filter_route = isset($_GET['filter_route']) ? trim($_GET['filter_route']) : '';
+$filter_driver = isset($_GET['filter_driver']) ? trim($_GET['filter_driver']) : '';
+$filter_vehicle = isset($_GET['filter_vehicle']) ? trim($_GET['filter_vehicle']) : '';
+$filter_date = isset($_GET['filter_date']) ? trim($_GET['filter_date']) : '';
+
+// Base query for Live Master Tracking Loop
 $query = "SELECT s.id, s.route_id, s.driver_id, s.vehicle_id, r.route_number, d.first_name, d.last_name, v.plate_number, s.start_time AS departure_time, s.end_time AS arrival_time 
           FROM schedules s
           JOIN routes r ON s.route_id = r.id
           JOIN drivers d ON s.driver_id = d.id
           JOIN vehicles v ON s.vehicle_id = v.id
-          ORDER BY s.start_time ASC";
-$schedules = $conn->query($query)->fetchAll(PDO::FETCH_ASSOC);
+          WHERE 1=1";
+
+$params = [];
+
+// Apply Search Keyword Filter
+if (!empty($search_query)) {
+    $query .= " AND (r.route_number LIKE :search OR d.first_name LIKE :search OR d.last_name LIKE :search OR CONCAT(d.first_name, ' ', d.last_name) LIKE :search OR v.plate_number LIKE :search)";
+    $params['search'] = '%' . $search_query . '%';
+}
+
+// Apply Specific Filter Criteria
+if (!empty($filter_route)) {
+    $query .= " AND s.route_id = :filter_route";
+    $params['filter_route'] = $filter_route;
+}
+
+if (!empty($filter_driver)) {
+    $query .= " AND s.driver_id = :filter_driver";
+    $params['filter_driver'] = $filter_driver;
+}
+
+if (!empty($filter_vehicle)) {
+    $query .= " AND s.vehicle_id = :filter_vehicle";
+    $params['filter_vehicle'] = $filter_vehicle;
+}
+
+if (!empty($filter_date)) {
+    $query .= " AND DATE(s.start_time) = :filter_date";
+    $params['filter_date'] = $filter_date;
+}
+
+$query .= " ORDER BY s.start_time ASC";
+
+// Execute parameter-bound query safely
+$stmt = $conn->prepare($query);
+$stmt->execute($params);
+$schedules = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Check if any filter/search is currently applied
+$isFiltered = !empty($search_query) || !empty($filter_route) || !empty($filter_driver) || !empty($filter_vehicle) || !empty($filter_date);
 ?>
 
 <style>
@@ -167,6 +213,64 @@ body {
     </div>
     
     <div class="col-md-12 mb-2"><?php echo $message; ?></div>
+
+    <div class="col-md-12 mb-4">
+        <div class="card theme-card">
+            <div class="card-body p-3">
+                <form action="schedules.php" method="GET" class="row g-2 align-items-center">
+                    <div class="col-md-3">
+                        <div class="input-group">
+                            <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-search"></i></span>
+                            <input type="text" name="search_query" class="form-control theme-input border-start-0" placeholder="Search route, driver, plate..." value="<?php echo htmlspecialchars($search_query); ?>">
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <select name="filter_route" class="form-select theme-input">
+                            <option value="">-- All Routes --</option>
+                            <?php foreach($routesList as $r): ?>
+                                <option value="<?php echo $r['id']; ?>" <?php echo ($filter_route == $r['id']) ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($r['route_number']); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <select name="filter_driver" class="form-select theme-input">
+                            <option value="">-- All Drivers --</option>
+                            <?php foreach($allDrivers as $d): ?>
+                                <option value="<?php echo $d['id']; ?>" <?php echo ($filter_driver == $d['id']) ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($d['first_name'] . ' ' . $d['last_name']); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <select name="filter_vehicle" class="form-select theme-input">
+                            <option value="">-- All Vehicles --</option>
+                            <?php foreach($vehiclesList as $v): ?>
+                                <option value="<?php echo $v['id']; ?>" <?php echo ($filter_vehicle == $v['id']) ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($v['plate_number']); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <input type="date" name="filter_date" class="form-control theme-input" value="<?php echo htmlspecialchars($filter_date); ?>" title="Filter by Departure Date">
+                    </div>
+                    <div class="col-md-1 d-flex gap-1">
+                        <button type="submit" class="btn btn-primary w-100 fw-semibold" title="Apply Search & Filters">
+                            <i class="bi bi-funnel"></i>
+                        </button>
+                        <?php if ($isFiltered): ?>
+                            <a href="schedules.php" class="btn btn-outline-secondary w-100 fw-semibold" title="Clear Search & Filters">
+                                <i class="bi bi-x-circle"></i>
+                            </a>
+                        <?php endif; ?>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
 
     <div class="col-md-4 mb-4">
         <div class="card theme-card">
@@ -223,8 +327,11 @@ body {
 
     <div class="col-md-8">
         <div class="card theme-card">
-            <div class="card-header theme-card-header py-3 text-custom-dark">
-                <i class="bi bi-clock text-success me-2"></i>Live Fleet Journeys Tracking Blocks
+            <div class="card-header theme-card-header py-3 text-custom-dark d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-clock text-success me-2"></i>Live Fleet Journeys Tracking Blocks</span>
+                <?php if ($isFiltered): ?>
+                    <span class="badge bg-light text-dark border">Filtered Results</span>
+                <?php endif; ?>
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
@@ -240,7 +347,12 @@ body {
                         </thead>
                         <tbody>
                             <?php if (empty($schedules)): ?>
-                                <tr><td colspan="5" class="text-center text-muted py-5">No shift matrices tracked down operational deployment paths.</td></tr>
+                                <tr>
+                                    <td colspan="5" class="text-center text-muted py-5">
+                                        <i class="bi bi-search display-6 d-block mb-2 text-secondary"></i>
+                                        No shift matrices tracked down operational deployment paths matching your criteria.
+                                    </td>
+                                </tr>
                             <?php else: ?>
                                 <?php foreach ($schedules as $s): ?>
                                     <tr style="border-bottom: 1px solid #e2e8f0;">
@@ -345,6 +457,7 @@ body {
     <?php endforeach; ?>
 <?php endif; ?>
 
-</div> <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</div> 
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
