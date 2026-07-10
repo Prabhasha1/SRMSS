@@ -129,6 +129,10 @@ $is_filtered = !empty($search) || !empty($status_filter) || !empty($capacity_fil
 .hover-card { transition: transform 0.3s ease, box-shadow 0.3s ease; border-radius: 12px !important; }
 .hover-card:hover { transform: translateY(-4px); box-shadow: 0 12px 24px rgba(0,0,0,0.06) !important; }
 .form-switch .form-check-input { cursor: pointer; width: 2.5em; height: 1.25em; }
+/* Added soft hover transition effect for link badges */
+.plate-link { transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out; display: inline-block; text-decoration: none; }
+.plate-link:hover { opacity: 0.85; transform: scale(1.02); }
+
 </style>
 
 <div class="container-fluid py-4 animate-fade" style="background-color: #f7fafc; min-height: 85vh;">
@@ -256,9 +260,11 @@ $is_filtered = !empty($search) || !empty($status_filter) || !empty($capacity_fil
                                     <?php foreach ($vehicles as $v): ?>
                                         <tr style="border-bottom: 1px solid #e2e8f0;">
                                             <td class="ps-4">
-                                                <span class="badge bg-dark text-white px-3 py-2 fw-mono font-monospace shadow-sm" style="letter-spacing: 0.5px;">
-                                                    <?php echo htmlspecialchars($v['plate_number']); ?>
-                                                </span>
+                                                <a href="vehicle_details.php?id=<?php echo urlencode($v['id']); ?>" class="plate-link" title="View Full Vehicle Profile & History">
+                                                    <span class="badge bg-dark text-white px-3 py-2 fw-mono font-monospace shadow-sm" style="letter-spacing: 0.5px;">
+                                                        <?php echo htmlspecialchars($v['plate_number']); ?>
+                                                    </span>
+                                                </a>
                                             </td>
                                             <td class="fw-semibold text-dark"><?php echo htmlspecialchars($v['model']); ?></td>
                                             <td><span class="text-secondary fw-bold"><?php echo htmlspecialchars($v['capacity']); ?></span> <small class="text-muted">Seats</small></td>

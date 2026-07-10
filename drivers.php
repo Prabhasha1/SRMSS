@@ -196,7 +196,11 @@ $is_filtered = ($search_query !== '' || $status_filter !== '');
                                     <tr style="border-bottom: 1px solid #e2e8f0;">
                                         <td class="ps-3 text-muted"><?php echo $driver['id']; ?></td>
                                         <td><code class="text-dark fw-bold"><?php echo htmlspecialchars($driver['license_number']); ?></code></td>
-                                        <td class="fw-semibold"><?php echo htmlspecialchars($driver['first_name'] . ' ' . $driver['last_name']); ?></td>
+                                        <td class="fw-semibold">
+                                            <a href="driver_profile.php?id=<?php echo $driver['id']; ?>" class="text-decoration-none text-primary fw-bold" title="View Driver Comprehensive Profile">
+                                                <i class="bi bi-person-fill me-1"></i><?php echo htmlspecialchars($driver['first_name'] . ' ' . $driver['last_name']); ?>
+                                            </a>
+                                        </td>
                                         <td><?php echo !empty($driver['phone']) ? htmlspecialchars($driver['phone']) : '<span class="text-muted small">N/A</span>'; ?></td>
                                         <td>
                                             <?php if ($driver['status'] == 'Available'): ?>
@@ -277,7 +281,6 @@ $is_filtered = ($search_query !== '' || $status_filter !== '');
     </div>
 </div>
 
-</div> 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>

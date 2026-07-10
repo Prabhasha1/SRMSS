@@ -1,3 +1,4 @@
+cd /c/xampp/htdocs/srmss
 git status
 git add -A
 git commit -m "Update remaining files"
